@@ -1,0 +1,1318 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content">
+    <title>ScreenShare Pro + Chat</title>
+    <!-- PeerJS -->
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    <!-- PayPal SDK: Cambia 'sb' por tu Client ID real para cobrar dinero real -->
+    <script src="https://www.paypal.com/sdk/js?client-id=AdazUGdO090WdxqkaDpJZpOSG16T4Fw8JekN2fooflo0b3hOr3Us_D2505LHbgLZ7snDPmAteka3NijI&currency=USD"></script>
+    
+    <style>
+        :root {
+            --primary: #fbbf24; /* Dorado Copa */
+            --primary-hover: #f59e0b;
+            --bg-dark: #022c22; /* Verde muy oscuro */
+            --bg-card: #064e3b; /* Verde cancha */
+            --text-main: #ffffff;
+            --text-muted: #a7f3d0;
+            --chat-bg: #065f46;
+            --msg-sent: #fbbf24;
+            --msg-received: #ffffff;
+            --pitch-line: rgba(255, 255, 255, 0.3);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-dark);
+            /* Patrón de césped */
+            background-image: repeating-linear-gradient(
+                90deg,
+                #022c22,
+                #022c22 40px,
+                #064e3b 40px,
+                #064e3b 80px
+            );
+            color: var(--text-main);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        header { 
+            text-align: center; 
+            margin-bottom: 25px; 
+            background: #000;
+            padding: 15px 30px;
+            border-radius: 8px;
+            border: 2px solid #333;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+        }
+        h1 {
+            font-family: 'Oswald', sans-serif;
+            font-weight: 700; font-size: 2.5rem; margin-bottom: 0;
+            text-transform: uppercase;
+            background: linear-gradient(to bottom, #fff, #e2e8f0);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            letter-spacing: 2px;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .container {
+            width: 100%; max-width: 1400px;
+            display: grid;
+            grid-template-columns: 350px 1fr;
+            gap: 20px;
+            height: 80vh; /* Altura fija para el layout */
+        }
+
+        /* --- RESPONSIVE MÓVIL (Estilo App/TikTok) --- */
+        @media (max-width: 768px) {
+            body {
+                padding: 0;
+                height: 100vh; /* Forzar altura completa */
+                height: 100dvh; /* Altura dinámica para navegadores móviles modernos */
+                overflow: hidden; /* Evitar scroll de la página entera */
+            }
+
+            header {
+                display: none; /* Ocultar título en móvil para ganar espacio */
+            }
+
+            .container {
+                display: flex;
+                flex-direction: column;
+                height: 100%;
+                max-width: 100%;
+                gap: 0;
+            }
+
+            .video-wrapper {
+                order: 1; /* El video va primero (arriba) */
+                flex: 0 0 35%; /* Reducido para dar espacio al teclado */
+                border-radius: 0 0 20px 20px; /* Bordes redondeados solo abajo */
+                border: none;
+                border-bottom: 4px solid white;
+                z-index: 10;
+                background: #000;
+            }
+
+            .left-panel {
+                order: 2; /* Chat y controles abajo */
+                flex: 1; /* Ocupa el resto del espacio */
+                padding: 15px;
+                gap: 15px;
+                overflow: hidden; /* Evita scroll del panel, fuerza scroll en chat */
+                background: #022c22; /* Fondo sólido para mejor lectura */
+                border-top: 2px solid var(--primary);
+            }
+
+            .card {
+                padding: 0;
+                box-shadow: none;
+                background: transparent;
+                border: none;
+            }
+        }
+
+        /* --- Panel Izquierdo (Controles + Chat) --- */
+        .left-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            height: 100%;
+        }
+
+        .card {
+            background-color: var(--bg-card);
+            padding: 20px;
+            border-radius: 16px;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        /* Controles */
+        .controls-section h3 {
+            font-size: 0.8rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 10px;
+        }
+        
+        input {
+            width: 100%; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 8px; color: white; margin-bottom: 10px; font-family: inherit;
+            font-size: 16px; /* Evita zoom automático en iPhone */
+        }
+        input:focus { outline: none; border-color: var(--primary); }
+
+        button {
+            width: 100%; padding: 10px; border: none; border-radius: 8px;
+            font-weight: 600; cursor: pointer; transition: 0.2s; color: #022c22;
+            text-transform: uppercase; font-family: 'Oswald', sans-serif; letter-spacing: 1px;
+        }
+        .btn-primary { background-color: var(--primary); }
+        .btn-primary:hover { background-color: var(--primary-hover); }
+        .btn-danger { background-color: #ef4444; color: white; display: none; }
+        .btn-connect { background-color: #334155; color: white; }
+
+        .id-display {
+            font-family: monospace; background: rgba(0,0,0,0.4); padding: 10px;
+            border-radius: 6px; border: 1px dashed var(--primary); color: var(--primary);
+            cursor: pointer; text-align: center; font-size: 0.8rem; word-break: break-all;
+        }
+
+        .viewer-count {
+            text-align: center;
+            margin-top: 8px;
+            font-size: 0.9rem;
+            color: var(--primary);
+            font-weight: 600;
+        }
+
+        /* Animación de entrada para mensajes */
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Chat */
+        .chat-container {
+            flex-grow: 1; /* Ocupa el espacio restante */
+            display: flex;
+            flex-direction: column;
+            min-height: 300px;
+            position: relative; /* Para posicionar el menú de regalos */
+        }
+
+        .chat-messages {
+            flex-grow: 1;
+            background: rgba(0,0,0,0.2);
+            border-radius: 8px;
+            padding: 15px;
+            overflow-y: auto;
+            margin-bottom: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            border: 1px solid rgba(255,255,255,0.05);
+            /* Efecto TikTok: Desvanecer parte superior */
+            mask-image: linear-gradient(to bottom, transparent 0%, black 15%);
+            -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 15%);
+        }
+
+        .message {
+            padding: 10px 15px;
+            border-radius: 12px;
+            font-size: 0.9rem;
+            max-width: 85%;
+            word-wrap: break-word;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            animation: slideIn 0.3s ease;
+            line-height: 1.4;
+        }
+
+        .message-sender {
+            font-size: 0.7rem;
+            font-weight: 700;
+            margin-bottom: 4px;
+            display: block;
+            opacity: 0.8;
+        }
+
+        .message-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 4px;
+        }
+
+        .btn-delete-msg {
+            background: none !important;
+            border: none !important;
+            color: #ef4444 !important;
+            width: auto !important;
+            padding: 0 5px !important;
+            font-size: 1.2rem !important;
+            line-height: 1 !important;
+            cursor: pointer;
+        }
+
+        .btn-ban-user {
+            background: none !important;
+            border: none !important;
+            color: #fbbf24 !important; /* Dorado Tarjeta */
+            width: auto !important;
+            padding: 0 5px !important;
+            font-size: 1.2rem !important;
+            line-height: 1 !important;
+            cursor: pointer;
+        }
+
+        .btn-pin-msg {
+            background: none !important;
+            border: none !important;
+            color: var(--text-muted) !important;
+            width: auto !important;
+            padding: 0 5px !important;
+            font-size: 1rem !important;
+            line-height: 1 !important;
+            cursor: pointer;
+        }
+        .btn-pin-msg:hover { color: var(--primary) !important; }
+
+        /* Estilos Mensaje Fijado */
+        .pinned-message-container {
+            background: rgba(251, 191, 36, 0.15);
+            border-left: 4px solid var(--primary);
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 8px;
+            display: none; /* Oculto por defecto */
+            animation: slideIn 0.3s ease;
+            position: relative;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .pinned-label {
+            font-size: 0.7rem; color: var(--primary); font-weight: bold; 
+            text-transform: uppercase; margin-bottom: 4px; display: block;
+        }
+        .pinned-text { font-size: 0.9rem; color: white; }
+        .btn-unpin {
+            position: absolute; top: 5px; right: 5px; background: none; border: none;
+            color: var(--text-muted); cursor: pointer; font-size: 1.2rem;
+        }
+
+        .msg-system {
+            align-self: center; 
+            font-size: 0.75rem; 
+            color: var(--text-muted); 
+            font-style: italic;
+            background: rgba(0,0,0,0.2);
+            padding: 4px 12px;
+            border-radius: 20px;
+            margin: 5px 0;
+        }
+        .msg-me {
+            align-self: flex-end; 
+            background: linear-gradient(135deg, var(--primary), #d97706); 
+            color: #022c22; 
+            font-weight: 600;
+            border-bottom-right-radius: 2px;
+            border-top-right-radius: 12px;
+            border-top-left-radius: 12px;
+            border-bottom-left-radius: 12px;
+        }
+        .msg-remote {
+            align-self: flex-start; 
+            background-color: white; 
+            color: #1f2937;
+            border-bottom-left-radius: 2px;
+            border-top-left-radius: 12px;
+            border-top-right-radius: 12px;
+            border-bottom-right-radius: 12px;
+        }
+        
+        /* Estilos Regalos (TikTok Style) */
+        .msg-gift {
+            align-self: center;
+            background: linear-gradient(90deg, #be185d, #db2777);
+            color: white;
+            font-weight: bold;
+            border: 1px solid #fbcfe8;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(219, 39, 119, 0.5);
+            font-size: 0.85rem;
+            padding: 8px 15px;
+            border-radius: 20px;
+            margin: 5px 0;
+            animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        
+        @keyframes popIn {
+            from { transform: scale(0.5); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+        
+        .gift-menu {
+            position: absolute; bottom: 70px; left: 10px; right: 10px;
+            background: rgba(15, 23, 42, 0.95);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-top: 2px solid var(--primary);
+            border-radius: 16px; padding: 15px; display: none; z-index: 100;
+            grid-template-columns: repeat(4, 1fr); gap: 12px;
+            box-shadow: 0 -10px 30px rgba(0,0,0,0.8);
+            backdrop-filter: blur(10px);
+            animation: slideUpMenu 0.3s ease;
+        }
+        
+        @keyframes slideUpMenu {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .gift-item {
+            background: linear-gradient(145deg, rgba(255,255,255,0.05), rgba(255,255,255,0.01));
+            border-radius: 12px; padding: 10px 5px;
+            text-align: center; cursor: pointer; transition: all 0.2s; 
+            border: 1px solid rgba(255,255,255,0.05);
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+        }
+        .gift-item:hover { 
+            background: rgba(255,255,255,0.1); 
+            border-color: var(--primary); 
+            transform: translateY(-3px); 
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        }
+        .gift-icon { font-size: 2rem; display: block; margin-bottom: 5px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3)); }
+        .gift-name { font-size: 0.7rem; color: #e2e8f0; margin-bottom: 3px; font-weight: 600; }
+        .gift-price { 
+            font-size: 0.75rem; color: var(--primary); font-weight: bold; 
+            background: rgba(251, 191, 36, 0.1); padding: 2px 6px; border-radius: 10px;
+        }
+        
+        .btn-recharge {
+            grid-column: span 4; background: linear-gradient(90deg, #f59e0b, #d97706); 
+            color: #fff; padding: 10px; border-radius: 8px; font-weight: bold; margin-top: 5px;
+            text-align: center; cursor: pointer; font-size: 0.9rem; border: none;
+            text-transform: uppercase; letter-spacing: 1px;
+        }
+        .btn-recharge:hover { filter: brightness(1.1); }
+
+        .chat-input-area { 
+            display: flex; 
+            gap: 10px; 
+            background: rgba(255,255,255,0.05);
+            padding: 8px;
+            border-radius: 12px;
+            border: 1px solid rgba(255,255,255,0.1);
+            align-items: center;
+        }
+        .chat-input-area input { 
+            margin-bottom: 0; 
+            background: transparent;
+            border: none;
+            padding: 8px;
+            font-size: 0.95rem;
+        }
+        .chat-input-area input:focus {
+            border: none;
+            box-shadow: none;
+        }
+        .chat-input-area button { 
+            width: 45px; 
+            height: 40px;
+            padding: 0; 
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 10px;
+            font-size: 1.2rem;
+            flex-shrink: 0;
+        }
+
+        /* --- Panel Derecho (Video) --- */
+        .video-wrapper {
+            background-color: black;
+            border-radius: 16px;
+            overflow: hidden;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+            border: 4px solid white; /* Linea de cancha */
+            height: 100%;
+        }
+        
+        .gift-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; overflow: hidden; z-index: 50;
+        }
+        
+        /* Animación Regalo Flotante con Nombre */
+        .floating-gift-container {
+            position: absolute; bottom: 20%; left: 50%; 
+            transform: translateX(-50%);
+            display: flex; flex-direction: column; align-items: center;
+            pointer-events: none; z-index: 100;
+            animation: giftFloat 4s ease-out forwards;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+        }
+        
+        .gift-sender-label {
+            background: linear-gradient(90deg, #fbbf24, #f59e0b);
+            color: #000; padding: 5px 15px; border-radius: 20px;
+            font-weight: 800; font-size: 1rem; margin-bottom: 5px;
+            box-shadow: 0 4px 15px rgba(251, 191, 36, 0.4);
+            white-space: nowrap; text-transform: uppercase;
+            font-family: 'Oswald', sans-serif; letter-spacing: 1px;
+        }
+        
+        .gift-emoji-display {
+            font-size: 6rem;
+            filter: drop-shadow(0 0 20px rgba(251, 191, 36, 0.6));
+            animation: shake 0.5s ease-in-out infinite alternate;
+        }
+        
+        @keyframes giftFloat {
+            0% { transform: translate(-50%, 100%) scale(0.5); opacity: 0; }
+            10% { opacity: 1; transform: translate(-50%, 50%) scale(1.2); }
+            15% { transform: translate(-50%, 0) scale(1); }
+            70% { opacity: 1; transform: translate(-50%, -100px); }
+            100% { opacity: 0; transform: translate(-50%, -250px) scale(0.8); }
+        }
+        
+        @keyframes shake {
+            from { transform: rotate(-5deg); }
+            to { transform: rotate(5deg); }
+        }
+
+        video { width: 100%; height: 100%; object-fit: contain; }
+
+        .placeholder {
+            position: absolute; color: var(--text-muted); text-align: center;
+            display: flex; flex-direction: column; align-items: center;
+        }
+        
+        /* Scrollbar bonita */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); }
+        ::-webkit-scrollbar-thumb { background: var(--primary); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--primary-hover); }
+
+        /* Ajuste final para móviles: Asegurar que el chat quepa */
+        @media (max-width: 768px) {
+            .chat-container {
+                min-height: 0 !important; /* Anular altura mínima en móvil */
+            }
+        }
+        
+        /* --- Estilos Nuevos: Monedas y Pagos --- */
+        .coin-balance {
+            background: rgba(0,0,0,0.4); color: #fbbf24; padding: 8px 12px;
+            border-radius: 8px; font-size: 0.9rem; font-weight: bold;
+            display: flex; align-items: center; gap: 5px; border: 1px solid #fbbf24;
+            white-space: nowrap;
+        }
+        
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8); z-index: 3000; display: none;
+            align-items: center; justify-content: center; backdrop-filter: blur(5px);
+        }
+        .modal-content {
+            background: var(--bg-card); padding: 25px; border-radius: 16px;
+            width: 90%; max-width: 350px; text-align: center;
+            border: 1px solid var(--primary); box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            max-height: 90vh; overflow-y: auto;
+        }
+        .payment-grid { display: grid; gap: 10px; margin: 20px 0; }
+        .btn-pay {
+            padding: 12px; border: none; border-radius: 8px; font-weight: bold;
+            cursor: pointer; color: white; font-family: 'Inter', sans-serif;
+        }
+        .btn-paypal { background: #0070ba; }
+        .btn-mp { background: #009ee3; }
+        .btn-stripe { background: #635bff; }
+        .btn-close-modal { background: transparent; border: 1px solid #a7f3d0; color: #a7f3d0; padding: 8px; border-radius: 6px; cursor: pointer; width: 100%; }
+        
+        /* Estilos Selección de Monedas (TikTok Style) */
+        .coin-packages-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            margin: 15px 0;
+        }
+        .coin-package {
+            background: rgba(255,255,255,0.05);
+            border: 2px solid transparent;
+            border-radius: 12px;
+            padding: 15px 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex; flex-direction: column; align-items: center;
+        }
+        .coin-package:hover { background: rgba(255,255,255,0.1); }
+        .coin-package.selected {
+            border-color: var(--primary);
+            background: rgba(251, 191, 36, 0.15);
+            box-shadow: 0 0 15px rgba(251, 191, 36, 0.2);
+            transform: scale(1.02);
+        }
+        .pkg-coins { font-size: 1.1rem; font-weight: bold; color: #fff; display: flex; align-items: center; gap: 5px; }
+        .pkg-price { font-size: 0.9rem; color: var(--primary); margin-top: 5px; font-weight: 600; }
+        .pkg-bonus { font-size: 0.7rem; color: #a7f3d0; margin-top: 2px; }
+
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>⚽ FUTBOL STREAM ⚽</h1>
+    </header>
+
+    <div class="container">
+        <!-- COLUMNA IZQUIERDA: Controles y Chat -->
+        <div class="left-panel">
+            
+            <!-- Tarjeta de Conexión -->
+            <div class="card controls-section">
+                <!-- Vista Transmisor -->
+                <div id="host-controls">
+                    <h3>🎫 ENTRADA AL PARTIDO (LINK)</h3>
+                    <div id="my-id" class="id-display" title="Click para copiar enlace">Generando enlace...</div>
+                    <div style="margin-top: 15px;">
+                        <button id="btn-start" class="btn-primary">Iniciar Transmisión</button>
+                        <button id="btn-stop" class="btn-danger">Detener</button>
+                    </div>
+                </div>
+
+                <hr id="divider" style="border: 0; border-top: 1px solid #334155; margin: 15px 0;">
+
+                <!-- Vista Espectador -->
+                <div id="viewer-controls">
+                    <h3 id="viewer-status-title">Esperando señal del estadio...</h3>
+                </div>
+                
+                <div id="status-badge" style="margin-top:10px; font-size:0.8rem; color:var(--text-muted); text-align:center;">
+                    Estado: Desconectado
+                </div>
+                <div id="viewer-count" class="viewer-count">👥 0 Espectadores</div>
+            </div>
+
+            <!-- Tarjeta de Chat -->
+            <div class="card chat-container">
+                <h3 style="margin-bottom:10px; color:var(--text-muted); font-size:0.8rem; text-transform:uppercase;">📢 COMENTARIOS EN VIVO</h3>
+                <!-- Contenedor Mensaje Fijado -->
+                <div id="pinned-container" class="pinned-message-container">
+                    <span class="pinned-label">📌 MENSAJE FIJADO</span>
+                    <div id="pinned-content" class="pinned-text"></div>
+                    <button id="btn-unpin" class="btn-unpin" style="display:none;">&times;</button>
+                </div>
+                <div class="chat-messages" id="chat-box">
+                    <div class="msg-system">Bienvenido al chat.</div>
+                </div>
+                
+                <!-- Menú de Regalos -->
+                <div id="gift-menu" class="gift-menu">
+                    <div class="gift-item" onclick="sendGift('⚽', 'Balón', 10)">
+                        <span class="gift-icon">⚽</span><span class="gift-name">Balón</span><span class="gift-price">10</span>
+                    </div>
+                    <div class="gift-item" onclick="sendGift('🍺', 'Cerveza', 50)">
+                        <span class="gift-icon">🍺</span><span class="gift-name">Cerveza</span><span class="gift-price">50</span>
+                    </div>
+                    <div class="gift-item" onclick="sendGift('🔥', 'Fuego', 100)">
+                        <span class="gift-icon">🔥</span><span class="gift-name">Fuego</span><span class="gift-price">100</span>
+                    </div>
+                    <div class="gift-item" onclick="sendGift('🏆', 'Trofeo', 500)">
+                        <span class="gift-icon">🏆</span><span class="gift-name">Trofeo</span><span class="gift-price">500</span>
+                    </div>
+                    <button class="btn-recharge" onclick="openPaymentModal()">💳 Recargar Monedas</button>
+                </div>
+
+                <div class="chat-input-area">
+                    <div id="coin-display" class="coin-balance">💰 0</div>
+                    <input type="text" id="chat-input" placeholder="Escribe un mensaje..." autocomplete="off">
+                    <button id="btn-gift-toggle" class="btn-primary" style="background: #db2777; margin-right: 5px;">🎁</button>
+                    <button id="btn-send" class="btn-primary">➤</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- COLUMNA DERECHA: Video -->
+        <div class="video-wrapper">
+            <div class="placeholder" id="video-placeholder">
+                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                    <line x1="8" y1="21" x2="16" y2="21"></line>
+                    <line x1="12" y1="17" x2="12" y2="21"></line>
+                </svg>
+                <p style="margin-top: 15px;">ESPERANDO EL PITAZO INICIAL...</p>
+            </div>
+            <div id="gift-overlay" class="gift-overlay"></div>
+            <video id="remote-video" autoplay playsinline style="display:none;"></video>
+        </div>
+    </div>
+
+    <!-- Modal de Bienvenida (Nombre Inicial) -->
+    <div id="name-modal" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(2, 44, 34, 0.95); z-index: 2000; display: flex; align-items: center; justify-content: center; flex-direction: column; backdrop-filter: blur(5px);">
+        <div style="background: var(--bg-card); padding: 30px; border-radius: 16px; text-align: center; border: 2px solid var(--primary); max-width: 90%; width: 350px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);">
+            <h2 style="margin-bottom: 15px; color: var(--primary); font-family: 'Oswald', sans-serif; font-size: 1.8rem;">¿QUIÉN ERES?</h2>
+            <p style="color: var(--text-muted); margin-bottom: 20px; font-size: 0.9rem;">Ingresa tu nombre para el chat</p>
+            <input type="text" id="initial-username" maxlength="15" placeholder="Tu Nombre..." style="margin-bottom: 20px; text-align: center; font-weight: bold; font-size: 1.1rem;">
+            <button id="btn-set-initial-name" class="btn-primary" style="font-size: 1.1rem; padding: 12px;">ENTRAR AL ESTADIO</button>
+        </div>
+    </div>
+
+    <!-- Modal de Pagos -->
+    <div id="payment-modal" class="modal-overlay">
+        <div class="modal-content">
+            <h3 style="color: var(--primary); margin-bottom: 10px;">RECARGAR MONEDAS</h3>
+            <p style="color: var(--text-muted); font-size: 0.9rem;">Selecciona un paquete:</p>
+            
+            <!-- Grid de Paquetes -->
+            <div class="coin-packages-grid">
+                <div class="coin-package" onclick="selectPackage(25, '0.25', this)">
+                    <span class="pkg-coins">💰 25</span>
+                    <span class="pkg-price">$0.25 USD</span>
+                </div>
+                <div class="coin-package" onclick="selectPackage(50, '0.50', this)">
+                    <span class="pkg-coins">💰 50</span>
+                    <span class="pkg-price">$0.50 USD</span>
+                </div>
+                <div class="coin-package selected" onclick="selectPackage(100, '1.00', this)">
+                    <span class="pkg-coins">💰 100</span>
+                    <span class="pkg-price">$1.00 USD</span>
+                </div>
+                <div class="coin-package" onclick="selectPackage(500, '5.00', this)">
+                    <span class="pkg-coins">💰 500</span>
+                    <span class="pkg-price">$5.00 USD</span>
+                </div>
+                <div class="coin-package" onclick="selectPackage(1000, '10.00', this)">
+                    <span class="pkg-coins">💰 1000</span>
+                    <span class="pkg-price">$10.00 USD</span>
+                </div>
+                <div class="coin-package" onclick="selectPackage(2000, '20.00', this)">
+                    <span class="pkg-coins">💰 2000</span>
+                    <span class="pkg-price">$20.00 USD</span>
+                </div>
+            </div>
+
+            <!-- Contenedor para Botones Reales de PayPal -->
+            <div id="paypal-button-container" style="margin-bottom: 15px; margin-top: 15px;"></div>
+            
+            <button onclick="closePaymentModal()" class="btn-close-modal">Cancelar</button>
+        </div>
+    </div>
+
+    <!-- Modal de Alerta: Saldo Insuficiente -->
+    <div id="balance-alert-modal" class="modal-overlay">
+        <div class="modal-content" style="border-color: #ef4444;">
+            <div style="font-size: 3rem; margin-bottom: 10px; animation: shake 0.5s;">⚠️</div>
+            <h3 style="color: #ef4444; margin-bottom: 10px; text-transform: uppercase; font-family: 'Oswald', sans-serif;">¡Saldo Insuficiente!</h3>
+            <p style="color: var(--text-muted); margin-bottom: 20px;">No tienes suficientes monedas para enviar este regalo.</p>
+            <div style="display: flex; gap: 10px;">
+                <button onclick="closeBalanceAlert()" class="btn-close-modal">Cancelar</button>
+                <button onclick="closeBalanceAlert(); openPaymentModal()" class="btn-primary">Recargar Ahora</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- CONFIGURACIÓN ---
+        const peer = new Peer(null, { debug: 1 });
+        
+        // Detectar si venimos de un enlace de invitación
+        const urlParams = new URLSearchParams(window.location.search);
+        const targetHostId = urlParams.get('host'); // ID del host si existe en la URL
+        const isViewer = !!targetHostId; // true si es espectador, false si es host
+
+        let localStream = null;
+        let connections = []; // Lista de conexiones de datos (Chat)
+        let activeCalls = []; // Lista de llamadas de video activas
+        let bannedPeers = new Set(); // Lista negra de usuarios
+        let myRole = isViewer ? 'viewer' : 'host';
+        let currentPinnedMessage = null; // Estado del mensaje fijado
+        const savedName = localStorage.getItem('screenShareUser');
+        let myUserName = savedName || (isViewer ? ('Hincha ' + Math.floor(Math.random() * 9000 + 1000)) : 'Narrador');
+        let myCoins = parseInt(localStorage.getItem('screenShareCoins')) || 0; // Saldo de monedas
+        
+        // Estado de Compra
+        let selectedPackage = { coins: 100, price: '1.00' };
+        
+        // Lista de palabras prohibidas (Filtro)
+        const badWords = ['tonto', 'idiota', 'estupido', 'mierda', 'basura', 'maldito', 'imbecil', 'puto', 'cabron', 'verga', 'pendejo', 'carajo', 'zorra'];
+
+        // --- SONIDOS DE REGALOS ---
+        // Puedes cambiar estos enlaces por tus propios archivos de audio (.mp3)
+        const giftSounds = {
+            '⚽': 'https://cdn.pixabay.com/audio/2021/08/09/audio_0dc29a14ac.mp3', // Silbato
+            '🍺': 'https://cdn.pixabay.com/audio/2022/03/24/audio_07650d3e6d.mp3', // Destapar
+            '🔥': 'https://cdn.pixabay.com/audio/2022/01/18/audio_d0a13f69d2.mp3', // Fuego
+            '🏆': 'https://cdn.pixabay.com/audio/2021/08/04/audio_12b0c7443c.mp3'  // Victoria
+        };
+
+        // Elementos DOM
+        const els = {
+            myId: document.getElementById('my-id'),
+            btnStart: document.getElementById('btn-start'),
+            btnStop: document.getElementById('btn-stop'),
+            video: document.getElementById('remote-video'),
+            placeholder: document.getElementById('video-placeholder'),
+            status: document.getElementById('status-badge'),
+            viewerCount: document.getElementById('viewer-count'),
+            chatBox: document.getElementById('chat-box'),
+            chatInput: document.getElementById('chat-input'),
+            btnSend: document.getElementById('btn-send'),
+            pinnedContainer: document.getElementById('pinned-container'),
+            pinnedContent: document.getElementById('pinned-content'),
+            btnUnpin: document.getElementById('btn-unpin'),
+            giftMenu: document.getElementById('gift-menu'),
+            btnGiftToggle: document.getElementById('btn-gift-toggle'),
+            giftOverlay: document.getElementById('gift-overlay'),
+            coinDisplay: document.getElementById('coin-display'),
+            paymentModal: document.getElementById('payment-modal'),
+            balanceAlert: document.getElementById('balance-alert-modal')
+        };
+        
+        const modalEls = {
+            modal: document.getElementById('name-modal'),
+            input: document.getElementById('initial-username'),
+            btn: document.getElementById('btn-set-initial-name')
+        };
+
+        // --- GESTIÓN DE INTERFAZ SEGÚN ROL ---
+        if (isViewer) {
+            // MODO ESPECTADOR: Ocultar controles de transmisión
+            document.getElementById('host-controls').style.display = 'none';
+            document.getElementById('divider').style.display = 'none';
+            updateStatus('Conectando automáticamente...');
+        } else {
+            // MODO HOST: Ocultar controles de espectador
+            document.getElementById('viewer-controls').style.display = 'none';
+            document.getElementById('divider').style.display = 'none';
+        }
+
+        // --- LÓGICA DEL MODAL DE NOMBRE ---
+        if (savedName) {
+            modalEls.modal.style.display = 'none';
+        }
+
+        modalEls.input.value = myUserName; // Pre-llenar con el nombre generado
+
+        modalEls.btn.addEventListener('click', () => {
+            const newName = modalEls.input.value.trim();
+            if (newName) {
+                myUserName = newName;
+                localStorage.setItem('screenShareUser', newName);
+                modalEls.modal.style.display = 'none'; // Ocultar modal
+                addSystemMsg("Te has unido como: " + newName);
+            } else {
+                alert("Por favor escribe un nombre para entrar.");
+            }
+        });
+        
+        // Permitir Enter en el modal
+        modalEls.input.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') modalEls.btn.click();
+        });
+
+        // 1. INICIALIZACIÓN
+        peer.on('open', (id) => {
+            if (isViewer) {
+                // Si soy espectador, me conecto automáticamente al Host del enlace
+                connectToHost(targetHostId);
+            } else {
+                // Si soy Host, genero el enlace para compartir
+                const currentUrl = window.location.href.split('?')[0];
+                const shareLink = `${currentUrl}?host=${id}`;
+                els.myId.innerText = shareLink;
+                updateStatus('Listo. Copia el enlace de arriba y envíalo.');
+            }
+            
+            // Actualizar UI de monedas al inicio
+            updateCoinUI();
+        });
+
+        // 2. LÓGICA DEL TRANSMISOR (HOST)
+        // Manejar llamadas de video entrantes
+        peer.on('call', (call) => {
+            if (bannedPeers.has(call.peer)) {
+                call.close(); // Rechazar si está baneado
+                return;
+            }
+            if (localStream) {
+                call.answer(localStream);
+                activeCalls.push(call); // Guardar llamada para poder cerrarla luego
+                call.on('close', () => {
+                    activeCalls = activeCalls.filter(c => c !== call);
+                });
+            }
+        });
+
+        // Manejar conexiones de datos (Chat) entrantes
+        peer.on('connection', (conn) => {
+            if (bannedPeers.has(conn.peer)) {
+                conn.close(); // Rechazar si está baneado
+                return;
+            }
+            setupConnection(conn);
+            addSystemMsg("Un usuario se ha conectado.");
+        });
+
+        els.btnStart.addEventListener('click', async () => {
+            try {
+                localStream = await navigator.mediaDevices.getDisplayMedia({
+                    video: { cursor: "always" },
+                    audio: true
+                });
+
+                // Mostrar video local
+                els.video.srcObject = localStream;
+                els.video.muted = true; // Mute local
+                toggleVideo(true);
+                
+                // UI Updates
+                els.btnStart.style.display = 'none';
+                els.btnStop.style.display = 'block';
+                myRole = 'host';
+                updateStatus('Transmitiendo en vivo');
+
+                // Detectar si deja de compartir por el navegador
+                localStream.getVideoTracks()[0].onended = stopSharing;
+
+            } catch (err) {
+                console.error(err);
+                alert("Error al capturar pantalla.");
+            }
+        });
+
+        els.btnStop.addEventListener('click', stopSharing);
+
+        function stopSharing() {
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+                localStream = null;
+            }
+            els.video.srcObject = null;
+            toggleVideo(false);
+            els.btnStart.style.display = 'block';
+            els.btnStop.style.display = 'none';
+            updateStatus('Transmisión finalizada');
+            
+            // Avisar a los conectados que cerró (opcional, PeerJS maneja close)
+            connections.forEach(c => c.close());
+            connections = [];
+        }
+
+        // 3. LÓGICA DEL ESPECTADOR (VIEWER) - AUTOMÁTICA
+        function connectToHost(hostId) {
+            updateStatus('Buscando transmisión...');
+
+            // A. Conectar Video
+            const call = peer.call(hostId, new MediaStream()); // Dummy stream para iniciar
+            
+            call.on('stream', (remoteStream) => {
+                els.video.srcObject = remoteStream;
+                els.video.muted = false;
+                toggleVideo(true);
+                updateStatus('Conectado y viendo');
+            });
+
+            call.on('close', () => {
+                toggleVideo(false);
+                alert("La transmisión ha terminado.");
+            });
+
+            // B. Conectar Chat
+            const conn = peer.connect(hostId);
+            setupConnection(conn);
+        }
+
+        // 4. LÓGICA DEL CHAT (COMÚN)
+        function setupConnection(conn) {
+            connections.push(conn);
+
+            conn.on('open', () => {
+                if (myRole === 'host') {
+                    broadcastViewerCount();
+                    // Si hay mensaje fijado, enviarlo al nuevo usuario
+                    if (currentPinnedMessage) {
+                        conn.send({ type: 'pin-msg', ...currentPinnedMessage });
+                    }
+                }
+            });
+
+            conn.on('data', (data) => {
+                // Recibimos datos (JSON)
+                if (data.type === 'chat') {
+                    // Si soy HOST, guardo el ID técnico del usuario para poder banearlo
+                    if (myRole === 'host') {
+                        data.senderPeerId = conn.peer;
+                    }
+                    addMessage(data.msg, 'remote', data.sender, data.id, data.senderPeerId);
+                    
+                    // Si soy HOST, reenvío el mensaje a los otros espectadores (Broadcast)
+                    if (myRole === 'host') {
+                        broadcastData(data, conn.peer);
+                    }
+                }
+                if (data.type === 'viewer-count') {
+                    els.viewerCount.innerText = `👥 ${data.count} Espectadores`;
+                }
+                if (data.type === 'delete-msg') {
+                    removeMessageById(data.id);
+                }
+                if (data.type === 'pin-msg') {
+                    showPinnedMessage(data.text, data.sender);
+                }
+                if (data.type === 'unpin-msg') {
+                    hidePinnedMessage();
+                }
+                if (data.type === 'gift') {
+                    handleIncomingGift(data);
+                }
+            });
+
+            conn.on('close', () => {
+                connections = connections.filter(c => c !== conn);
+                addSystemMsg("Un usuario se desconectó.");
+                
+                if (myRole === 'host') {
+                    broadcastViewerCount();
+                }
+            });
+        }
+
+        // Enviar mensaje
+        function sendMessage() {
+            let text = els.chatInput.value.trim();
+            if (!text) return;
+
+            // Aplicar filtro de malas palabras
+            text = filterProfanity(text);
+
+            const msgId = Date.now().toString(36) + Math.random().toString(36).substr(2);
+
+            // 1. Mostrar mi mensaje
+            addMessage(text, 'me', myUserName, msgId);
+
+            // 2. Enviar a todos los conectados
+            const payload = { type: 'chat', msg: text, sender: myUserName, id: msgId };
+            broadcastData(payload);
+
+            els.chatInput.value = '';
+        }
+
+        // Enviar conteo de espectadores
+        function broadcastViewerCount() {
+            const count = connections.length;
+            els.viewerCount.innerText = `👥 ${count} Espectadores`;
+            broadcastData({ type: 'viewer-count', count: count });
+        }
+
+        // Enviar datos a todas las conexiones activas
+        function broadcastData(data, excludePeerId = null) {
+            connections.forEach(conn => {
+                if (conn.open && conn.peer !== excludePeerId) {
+                    conn.send(data);
+                }
+            });
+        }
+
+        // UI: Agregar burbuja de mensaje
+        function addMessage(text, type, senderName, msgId, senderPeerId) {
+            const div = document.createElement('div');
+            div.classList.add('message');
+            div.classList.add(type === 'me' ? 'msg-me' : (type === 'gift' ? 'msg-gift' : 'msg-remote'));
+            if (msgId) div.setAttribute('data-msg-id', msgId);
+            
+            const headerDiv = document.createElement('div');
+            headerDiv.classList.add('message-header');
+            
+            const senderDiv = document.createElement('span');
+            senderDiv.classList.add('message-sender');
+            senderDiv.innerText = senderName || 'Anónimo';
+            senderDiv.style.marginBottom = '0';
+
+            headerDiv.appendChild(senderDiv);
+
+            // Botón de borrar (Solo Host)
+            if (myRole === 'host') {
+                // Botón de Fijar (Pin)
+                const pinBtn = document.createElement('button');
+                pinBtn.innerHTML = '📌';
+                pinBtn.className = 'btn-pin-msg';
+                pinBtn.title = 'Fijar mensaje';
+                pinBtn.onclick = () => {
+                    pinMessage(text, senderName);
+                };
+                headerDiv.appendChild(pinBtn);
+
+                // Botón de Banear (Solo si es mensaje remoto)
+                if (senderPeerId) {
+                    const banBtn = document.createElement('button');
+                    banBtn.innerHTML = '🚫';
+                    banBtn.className = 'btn-ban-user';
+                    banBtn.title = 'Expulsar (Tarjeta Roja)';
+                    banBtn.onclick = () => banUser(senderPeerId, senderName);
+                    headerDiv.appendChild(banBtn);
+                }
+
+                const delBtn = document.createElement('button');
+                delBtn.innerHTML = '&times;';
+                delBtn.className = 'btn-delete-msg';
+                delBtn.title = 'Eliminar mensaje';
+                delBtn.onclick = () => deleteMessage(msgId);
+                headerDiv.appendChild(delBtn);
+            }
+            
+            const textDiv = document.createElement('div');
+            textDiv.innerText = text;
+
+            div.appendChild(headerDiv);
+            div.appendChild(textDiv);
+            
+            els.chatBox.appendChild(div);
+            els.chatBox.scrollTop = els.chatBox.scrollHeight;
+            
+            // Si es un regalo, eliminar del chat después de 5 segundos
+            if (type === 'gift') {
+                setTimeout(() => {
+                    div.style.transition = 'opacity 0.5s, transform 0.5s';
+                    div.style.opacity = '0';
+                    div.style.transform = 'translateX(20px)';
+                    setTimeout(() => div.remove(), 500);
+                }, 5000);
+            }
+        }
+
+        function addSystemMsg(text) {
+            const div = document.createElement('div');
+            div.classList.add('msg-system');
+            div.innerText = text;
+            els.chatBox.appendChild(div);
+        }
+
+        function deleteMessage(id) {
+            if (confirm('¿Eliminar este mensaje para todos?')) {
+                removeMessageById(id);
+                broadcastData({ type: 'delete-msg', id: id });
+            }
+        }
+
+        function removeMessageById(id) {
+            const el = document.querySelector(`div[data-msg-id="${id}"]`);
+            if (el) el.remove();
+        }
+
+        function banUser(peerId, name) {
+            if (confirm(`¿Sacar tarjeta ROJA a ${name} y expulsarlo del estadio?`)) {
+                bannedPeers.add(peerId);
+                
+                // Cortar Chat
+                const conn = connections.find(c => c.peer === peerId);
+                if (conn) conn.close();
+                
+                // Cortar Video
+                const call = activeCalls.find(c => c.peer === peerId);
+                if (call) call.close();
+                
+                addSystemMsg(`🟥 ÁRBITRO: ${name} ha sido expulsado del partido.`);
+            }
+        }
+
+        // --- LÓGICA DE FIJAR MENSAJES ---
+        function pinMessage(text, sender) {
+            currentPinnedMessage = { text, sender };
+            showPinnedMessage(text, sender);
+            broadcastData({ type: 'pin-msg', text, sender });
+        }
+
+        function unpinMessage() {
+            currentPinnedMessage = null;
+            hidePinnedMessage();
+            broadcastData({ type: 'unpin-msg' });
+        }
+
+        function showPinnedMessage(text, sender) {
+            els.pinnedContent.innerHTML = `<strong>${sender}:</strong> ${text}`;
+            els.pinnedContainer.style.display = 'block';
+            
+            if (myRole === 'host') {
+                els.btnUnpin.style.display = 'block';
+                els.btnUnpin.onclick = unpinMessage;
+            } else {
+                els.btnUnpin.style.display = 'none';
+            }
+        }
+
+        function hidePinnedMessage() {
+            els.pinnedContainer.style.display = 'none';
+            els.pinnedContent.innerHTML = '';
+            currentPinnedMessage = null;
+        }
+
+        // Función de filtrado
+        function filterProfanity(text) {
+            let clean = text;
+            badWords.forEach(word => {
+                const regex = new RegExp(`\\b${word}\\b`, 'gi');
+                clean = clean.replace(regex, '*'.repeat(word.length));
+            });
+            return clean;
+        }
+
+        // --- SISTEMA DE REGALOS Y DONACIONES ---
+        
+        // Toggle Menú
+        els.btnGiftToggle.addEventListener('click', () => {
+            const isHidden = els.giftMenu.style.display === 'none' || els.giftMenu.style.display === '';
+            els.giftMenu.style.display = isHidden ? 'grid' : 'none';
+        });
+
+        // Cerrar menú de regalos al hacer clic fuera
+        document.addEventListener('click', (e) => {
+            const menu = els.giftMenu;
+            const btn = els.btnGiftToggle;
+            
+            // Si el menú está abierto Y el clic NO fue en el menú Y el clic NO fue en el botón de abrir
+            if (menu.style.display === 'grid' && !menu.contains(e.target) && !btn.contains(e.target)) {
+                menu.style.display = 'none';
+            }
+        });
+
+        // Enviar Regalo
+        window.sendGift = function(emoji, name, price) {
+            // 1. Validar Saldo
+            if (myCoins < price) {
+                openBalanceAlert();
+                return;
+            }
+            
+            // 2. Descontar Monedas
+            addCoins(-price);
+            
+            const msgId = Date.now().toString(36);
+            const text = `Ha enviado un ${name} ${emoji}`;
+            
+            // Mostrar localmente
+            addMessage(text, 'gift', myUserName, msgId);
+            showGiftAnimation(emoji, myUserName, name);
+            playGiftSound(emoji); // Reproducir sonido
+            
+            // Enviar a otros
+            const payload = { type: 'gift', emoji: emoji, name: name, sender: myUserName, id: msgId };
+            broadcastData(payload);
+            
+            // Cerrar menú
+            els.giftMenu.style.display = 'none';
+        };
+
+        // Recibir Regalo
+        function handleIncomingGift(data) {
+            const text = `Ha enviado un ${data.name} ${data.emoji}`;
+            addMessage(text, 'gift', data.sender, data.id);
+            showGiftAnimation(data.emoji, data.sender, data.name);
+            playGiftSound(data.emoji); // Reproducir sonido
+        }
+
+        // Animación en Video
+        function showGiftAnimation(emoji, sender, giftName) {
+            const container = document.createElement('div');
+            container.className = 'floating-gift-container';
+            container.style.left = (20 + Math.random() * 60) + '%'; // Posición aleatoria horizontal
+
+            const nameLabel = document.createElement('div');
+            nameLabel.className = 'gift-sender-label';
+            nameLabel.innerHTML = `${sender} <span style="font-weight:400; font-size:0.8em;">envió ${giftName}</span>`;
+
+            const emojiDiv = document.createElement('div');
+            emojiDiv.className = 'gift-emoji-display';
+            emojiDiv.innerText = emoji;
+
+            container.appendChild(nameLabel);
+            container.appendChild(emojiDiv);
+            els.giftOverlay.appendChild(container);
+            
+            // Eliminar después de la animación
+            setTimeout(() => container.remove(), 4000);
+        }
+
+        // Reproductor de Sonidos
+        function playGiftSound(emoji) {
+            const soundUrl = giftSounds[emoji];
+            if (soundUrl) {
+                const audio = new Audio(soundUrl);
+                audio.volume = 0.6; // Volumen al 60%
+                audio.play().catch(e => console.log("El navegador bloqueó el sonido automático (interactúa primero)."));
+            }
+        }
+
+        // --- SISTEMA DE PAGOS ---
+        
+        function updateCoinUI() {
+            els.coinDisplay.innerText = `💰 ${myCoins}`;
+        }
+
+        function addCoins(amount) {
+            myCoins += amount;
+            localStorage.setItem('screenShareCoins', myCoins);
+            updateCoinUI();
+        }
+        
+        // Selección de Paquete
+        window.selectPackage = function(coins, price, element) {
+            // Actualizar datos
+            selectedPackage = { coins: coins, price: price };
+            
+            // Actualizar UI (clase selected)
+            document.querySelectorAll('.coin-package').forEach(el => el.classList.remove('selected'));
+            element.classList.add('selected');
+        };
+
+        // --- INTEGRACIÓN PAYPAL REAL (SDK) ---
+        // Esto crea los botones reales de PayPal en el modal
+        paypal.Buttons({
+            style: { layout: 'vertical', color: 'gold', shape: 'rect', label: 'pay' },
+            createOrder: function(data, actions) {
+                // Usar el precio seleccionado
+                return actions.order.create({
+                    purchase_units: [{ amount: { value: selectedPackage.price } }] 
+                });
+            },
+            onApprove: function(data, actions) {
+                // Esta función se ejecuta SOLO cuando el pago es exitoso de verdad
+                return actions.order.capture().then(function(details) {
+                    alert('¡Pago Exitoso! Gracias ' + details.payer.name.given_name);
+                    addCoins(selectedPackage.coins); // Añadir monedas seleccionadas
+                    closePaymentModal();
+                });
+            }
+        }).render('#paypal-button-container');
+
+        window.openPaymentModal = function() {
+            els.giftMenu.style.display = 'none'; // Cerrar menú de regalos
+            els.paymentModal.style.display = 'flex';
+        };
+
+        window.closePaymentModal = function() {
+            els.paymentModal.style.display = 'none';
+        };
+
+        // Funciones para Alerta de Saldo
+        window.openBalanceAlert = function() {
+            els.balanceAlert.style.display = 'flex';
+        };
+        window.closeBalanceAlert = function() {
+            els.balanceAlert.style.display = 'none';
+        };
+
+        // Event Listeners para Chat
+        els.btnSend.addEventListener('click', sendMessage);
+        els.chatInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendMessage();
+        });
+
+        // Utilidades UI
+        function toggleVideo(show) {
+            els.video.style.display = show ? 'block' : 'none';
+            els.placeholder.style.display = show ? 'none' : 'flex';
+        }
+
+        function updateStatus(msg) {
+            els.status.innerText = `Estado: ${msg}`;
+        }
+
+        els.myId.addEventListener('click', () => {
+            navigator.clipboard.writeText(els.myId.innerText);
+            alert("Enlace copiado! Envíalo a tus espectadores.");
+        });
+    </script>
+</body>
+</html>
