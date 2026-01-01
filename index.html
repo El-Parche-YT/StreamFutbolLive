@@ -578,6 +578,7 @@
                 <!-- Vista Espectador -->
                 <div id="viewer-controls">
                     <h3 id="viewer-status-title">Esperando señal del estadio...</h3>
+                    <button id="btn-reconnect" class="btn-connect" style="margin-top:10px; background-color: #3b82f6;">🔄 RECONECTAR SEÑAL</button>
                 </div>
                 
                 <div id="status-badge" style="margin-top:10px; font-size:0.8rem; color:var(--text-muted); text-align:center;">
@@ -720,6 +721,7 @@
         let activeCalls = []; // Lista de llamadas de video activas
         let bannedPeers = new Set(); // Lista negra de usuarios
         let myRole = isViewer ? 'viewer' : 'host';
+        let currentCall = null; // Referencia a la llamada actual (Viewer)
         let currentPinnedMessage = null; // Estado del mensaje fijado
         const savedName = localStorage.getItem('screenShareUser');
         let myUserName = savedName || (isViewer ? ('Hincha ' + Math.floor(Math.random() * 9000 + 1000)) : 'Narrador');
@@ -744,6 +746,7 @@
         const els = {
             myId: document.getElementById('my-id'),
             btnStart: document.getElementById('btn-start'),
+            btnReconnect: document.getElementById('btn-reconnect'),
             btnGoLive: document.getElementById('btn-go-live'),
             btnStop: document.getElementById('btn-stop'),
             video: document.getElementById('remote-video'),
@@ -867,7 +870,7 @@
                 els.btnStart.style.display = 'none';
                 els.btnGoLive.style.display = 'block';
                 myRole = 'host';
-                updateStatus('Vista Previa. Pulsa TRANSMITIR LIVE.');
+                updateStatus('VISTA PREVIA (OFFLINE). Pulsa TRANSMITIR LIVE.');
 
                 // Detectar si deja de compartir por el navegador
                 localStream.getVideoTracks()[0].onended = stopSharing;
@@ -920,9 +923,15 @@
         // 3. LÓGICA DEL ESPECTADOR (VIEWER) - AUTOMÁTICA
         function connectToHost(hostId) {
             updateStatus('Buscando transmisión...');
+            
+            // Cerrar llamada anterior si existe para evitar conflictos
+            if (currentCall) {
+                currentCall.close();
+            }
 
             // A. Conectar Video
             const call = peer.call(hostId, new MediaStream()); // Dummy stream para iniciar
+            currentCall = call;
             
             call.on('stream', (remoteStream) => {
                 els.video.srcObject = remoteStream;
@@ -934,6 +943,11 @@
             call.on('close', () => {
                 toggleVideo(false);
                 alert("La transmisión ha terminado.");
+            });
+
+            call.on('error', (err) => {
+                console.error("Error en llamada:", err);
+                updateStatus('Error de conexión. Intenta reconectar.');
             });
 
             // B. Conectar Chat
@@ -985,13 +999,8 @@
                     handleIncomingGift(data);
                 }
                 if (data.type === 'stream-start' && isViewer) {
-                    const call = peer.call(targetHostId, new MediaStream());
-                    call.on('stream', (remoteStream) => {
-                        els.video.srcObject = remoteStream;
-                        els.video.muted = false;
-                        toggleVideo(true);
-                        updateStatus('Conectado y viendo');
-                    });
+                    console.log("El host ha iniciado LIVE. Reconectando...");
+                    connectToHost(targetHostId);
                 }
             });
 
@@ -1002,6 +1011,13 @@
                 if (myRole === 'host') {
                     broadcastViewerCount();
                 }
+            });
+        }
+
+        // Botón de Reconexión Manual
+        if (els.btnReconnect) {
+            els.btnReconnect.addEventListener('click', () => {
+                if (targetHostId) connectToHost(targetHostId);
             });
         }
 
