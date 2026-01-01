@@ -826,6 +826,16 @@
             updateCoinUI();
         });
 
+        // Manejo de errores generales de PeerJS para evitar desconexiones silenciosas
+        peer.on('error', (err) => {
+            console.error("PeerJS Error:", err);
+            if (err.type === 'peer-unavailable') {
+                updateStatus('No se encontró al Host. Verifica el enlace.');
+            } else {
+                updateStatus('Error de conexión (' + err.type + '). Intenta reconectar.');
+            }
+        });
+
         // 2. LÓGICA DEL TRANSMISOR (HOST)
         // Manejar llamadas de video entrantes
         peer.on('call', (call) => {
@@ -834,6 +844,7 @@
                 return;
             }
             if (localStream && isLive) {
+                console.log("Aceptando espectador:", call.peer);
                 call.answer(localStream);
                 activeCalls.push(call); // Guardar llamada para poder cerrarla luego
                 call.on('close', () => {
@@ -926,6 +937,10 @@
             
             // Cerrar llamada anterior si existe para evitar conflictos
             if (currentCall) {
+                // Quitamos el listener para que no salte el mensaje de "terminado" al cerrar manualmente
+                currentCall.removeAllListeners && currentCall.removeAllListeners('close'); 
+                // O simplemente reemplazamos el comportamiento onclose por una función vacía antes de cerrar
+                currentCall.on('close', () => {}); 
                 currentCall.close();
             }
 
@@ -938,11 +953,14 @@
                 els.video.muted = false;
                 toggleVideo(true);
                 updateStatus('Conectado y viendo');
+                // Forzar reproducción para asegurar que se vea la pantalla
+                els.video.play().catch(e => console.log("Autoplay bloqueado, esperando interacción:", e));
             });
 
             call.on('close', () => {
                 toggleVideo(false);
-                alert("La transmisión ha terminado.");
+                // Eliminamos el alert molesto. Solo actualizamos el estado.
+                updateStatus('Señal interrumpida. Pulsa RECONECTAR.');
             });
 
             call.on('error', (err) => {
