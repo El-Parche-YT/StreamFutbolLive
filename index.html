@@ -568,6 +568,7 @@
                     <div id="my-id" class="id-display" title="Click para copiar enlace">Generando enlace...</div>
                     <div style="margin-top: 15px;">
                         <button id="btn-start" class="btn-primary">Iniciar Transmisión</button>
+                        <button id="btn-go-live" class="btn-primary" style="display:none; background-color: #10b981;">📡 YA TRANSMITIR LIVE</button>
                         <button id="btn-stop" class="btn-danger">Detener</button>
                     </div>
                 </div>
@@ -713,6 +714,8 @@
         const isViewer = !!targetHostId; // true si es espectador, false si es host
 
         let localStream = null;
+        let isLive = false; // Controla si la transmisión es pública
+        let pendingCalls = []; // Llamadas en espera antes de salir en vivo
         let connections = []; // Lista de conexiones de datos (Chat)
         let activeCalls = []; // Lista de llamadas de video activas
         let bannedPeers = new Set(); // Lista negra de usuarios
@@ -741,6 +744,7 @@
         const els = {
             myId: document.getElementById('my-id'),
             btnStart: document.getElementById('btn-start'),
+            btnGoLive: document.getElementById('btn-go-live'),
             btnStop: document.getElementById('btn-stop'),
             video: document.getElementById('remote-video'),
             placeholder: document.getElementById('video-placeholder'),
@@ -826,12 +830,14 @@
                 call.close(); // Rechazar si está baneado
                 return;
             }
-            if (localStream) {
+            if (localStream && isLive) {
                 call.answer(localStream);
                 activeCalls.push(call); // Guardar llamada para poder cerrarla luego
                 call.on('close', () => {
                     activeCalls = activeCalls.filter(c => c !== call);
                 });
+            } else {
+                pendingCalls.push(call);
             }
         });
 
@@ -859,9 +865,9 @@
                 
                 // UI Updates
                 els.btnStart.style.display = 'none';
-                els.btnStop.style.display = 'block';
+                els.btnGoLive.style.display = 'block';
                 myRole = 'host';
-                updateStatus('Transmitiendo en vivo');
+                updateStatus('Vista Previa. Pulsa TRANSMITIR LIVE.');
 
                 // Detectar si deja de compartir por el navegador
                 localStream.getVideoTracks()[0].onended = stopSharing;
@@ -870,6 +876,24 @@
                 console.error(err);
                 alert("Error al capturar pantalla.");
             }
+        });
+
+        els.btnGoLive.addEventListener('click', () => {
+            isLive = true;
+            els.btnGoLive.style.display = 'none';
+            els.btnStop.style.display = 'block';
+            updateStatus('Transmitiendo en vivo');
+            
+            // Responder llamadas pendientes
+            pendingCalls.forEach(call => {
+                if (localStream) {
+                    call.answer(localStream);
+                    activeCalls.push(call);
+                    call.on('close', () => activeCalls = activeCalls.filter(c => c !== call));
+                }
+            });
+            pendingCalls = [];
+            broadcastData({ type: 'stream-start' });
         });
 
         els.btnStop.addEventListener('click', stopSharing);
@@ -882,7 +906,10 @@
             els.video.srcObject = null;
             toggleVideo(false);
             els.btnStart.style.display = 'block';
+            els.btnGoLive.style.display = 'none';
             els.btnStop.style.display = 'none';
+            isLive = false;
+            pendingCalls = [];
             updateStatus('Transmisión finalizada');
             
             // Avisar a los conectados que cerró (opcional, PeerJS maneja close)
@@ -956,6 +983,15 @@
                 }
                 if (data.type === 'gift') {
                     handleIncomingGift(data);
+                }
+                if (data.type === 'stream-start' && isViewer) {
+                    const call = peer.call(targetHostId, new MediaStream());
+                    call.on('stream', (remoteStream) => {
+                        els.video.srcObject = remoteStream;
+                        els.video.muted = false;
+                        toggleVideo(true);
+                        updateStatus('Conectado y viendo');
+                    });
                 }
             });
 
