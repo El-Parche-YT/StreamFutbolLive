@@ -474,6 +474,8 @@
 
         video { width: 100%; height: 100%; object-fit: contain; }
 
+        iframe { width: 100%; height: 100%; border: none; }
+
         .placeholder {
             position: absolute; color: var(--text-muted); text-align: center;
             display: flex; flex-direction: column; align-items: center;
@@ -637,7 +639,6 @@
                 <p style="margin-top: 15px;">ESPERANDO EL PITAZO INICIAL...</p>
             </div>
             <div id="gift-overlay" class="gift-overlay"></div>
-            <video id="remote-video" autoplay playsinline style="display:none;"></video>
         </div>
     </div>
 
@@ -714,11 +715,8 @@
         const targetHostId = urlParams.get('host'); // ID del host si existe en la URL
         const isViewer = !!targetHostId; // true si es espectador, false si es host
 
-        let localStream = null;
         let isLive = false; // Controla si la transmisión es pública
-        let pendingCalls = []; // Llamadas en espera antes de salir en vivo
         let connections = []; // Lista de conexiones de datos (Chat)
-        let activeCalls = []; // Lista de llamadas de video activas
         let bannedPeers = new Set(); // Lista negra de usuarios
         let myRole = isViewer ? 'viewer' : 'host';
         let currentCall = null; // Referencia a la llamada actual (Viewer)
@@ -749,7 +747,6 @@
             btnReconnect: document.getElementById('btn-reconnect'),
             btnGoLive: document.getElementById('btn-go-live'),
             btnStop: document.getElementById('btn-stop'),
-            video: document.getElementById('remote-video'),
             placeholder: document.getElementById('video-placeholder'),
             status: document.getElementById('status-badge'),
             viewerCount: document.getElementById('viewer-count'),
@@ -836,25 +833,6 @@
             }
         });
 
-        // 2. LÓGICA DEL TRANSMISOR (HOST)
-        // Manejar llamadas de video entrantes
-        peer.on('call', (call) => {
-            if (bannedPeers.has(call.peer)) {
-                call.close(); // Rechazar si está baneado
-                return;
-            }
-            if (localStream && isLive) {
-                console.log("Aceptando espectador:", call.peer);
-                call.answer(localStream);
-                activeCalls.push(call); // Guardar llamada para poder cerrarla luego
-                call.on('close', () => {
-                    activeCalls = activeCalls.filter(c => c !== call);
-                });
-            } else {
-                pendingCalls.push(call);
-            }
-        });
-
         // Manejar conexiones de datos (Chat) entrantes
         peer.on('connection', (conn) => {
             if (bannedPeers.has(conn.peer)) {
@@ -865,31 +843,15 @@
             addSystemMsg("Un usuario se ha conectado.");
         });
 
-        els.btnStart.addEventListener('click', async () => {
-            try {
-                localStream = await navigator.mediaDevices.getDisplayMedia({
-                    video: { cursor: "always" },
-                    audio: true
-                });
-
-                // Mostrar video local
-                els.video.srcObject = localStream;
-                els.video.muted = true; // Mute local
-                toggleVideo(true);
-                
-                // UI Updates
-                els.btnStart.style.display = 'none';
-                els.btnGoLive.style.display = 'block';
-                myRole = 'host';
-                updateStatus('VISTA PREVIA (OFFLINE). Pulsa TRANSMITIR LIVE.');
-
-                // Detectar si deja de compartir por el navegador
-                localStream.getVideoTracks()[0].onended = stopSharing;
-
-            } catch (err) {
-                console.error(err);
-                alert("Error al capturar pantalla.");
-            }
+        els.btnStart.addEventListener('click', () => {
+            // Iniciar VDO.Ninja en modo PUSH (Enviar)
+            loadVdoNinja('push', peer.id);
+            
+            // UI Updates
+            els.btnStart.style.display = 'none';
+            els.btnGoLive.style.display = 'block';
+            myRole = 'host';
+            updateStatus('Configura tu cámara/pantalla y pulsa TRANSMITIR LIVE.');
         });
 
         els.btnGoLive.addEventListener('click', () => {
@@ -898,75 +860,49 @@
             els.btnStop.style.display = 'block';
             updateStatus('Transmitiendo en vivo');
             
-            // Responder llamadas pendientes
-            pendingCalls.forEach(call => {
-                if (localStream) {
-                    call.answer(localStream);
-                    activeCalls.push(call);
-                    call.on('close', () => activeCalls = activeCalls.filter(c => c !== call));
-                }
-            });
-            pendingCalls = [];
             broadcastData({ type: 'stream-start' });
         });
 
         els.btnStop.addEventListener('click', stopSharing);
 
         function stopSharing() {
-            if (localStream) {
-                localStream.getTracks().forEach(track => track.stop());
-                localStream = null;
-            }
-            els.video.srcObject = null;
-            toggleVideo(false);
-            els.btnStart.style.display = 'block';
-            els.btnGoLive.style.display = 'none';
-            els.btnStop.style.display = 'none';
-            isLive = false;
-            pendingCalls = [];
-            updateStatus('Transmisión finalizada');
+            // Recargar la página para detener todo limpiamente
+            location.reload();
+        }
+
+        // Función para cargar VDO.Ninja en el contenedor de video
+        function loadVdoNinja(mode, id) {
+            const wrapper = document.querySelector('.video-wrapper');
+            const overlay = document.getElementById('gift-overlay');
             
-            // Avisar a los conectados que cerró (opcional, PeerJS maneja close)
-            connections.forEach(c => c.close());
-            connections = [];
+            // Ocultar placeholder
+            els.placeholder.style.display = 'none';
+            
+            // Crear iframe
+            const iframe = document.createElement('iframe');
+            iframe.allow = "autoplay; camera; microphone; display-capture; fullscreen";
+            
+            // Construir URL: push para host, view para viewer
+            // clean=1 quita la interfaz de VDO.Ninja
+            let url = `https://vdo.ninja/?${mode}=${id}&clean=1`;
+            
+            if (mode === 'view') {
+                url += '&autoplay=1'; // Autoplay para espectadores
+            }
+            
+            iframe.src = url;
+            
+            // Insertar antes del overlay de regalos para que queden encima
+            wrapper.insertBefore(iframe, overlay);
         }
 
         // 3. LÓGICA DEL ESPECTADOR (VIEWER) - AUTOMÁTICA
         function connectToHost(hostId) {
             updateStatus('Buscando transmisión...');
             
-            // Cerrar llamada anterior si existe para evitar conflictos
-            if (currentCall) {
-                // Quitamos el listener para que no salte el mensaje de "terminado" al cerrar manualmente
-                currentCall.removeAllListeners && currentCall.removeAllListeners('close'); 
-                // O simplemente reemplazamos el comportamiento onclose por una función vacía antes de cerrar
-                currentCall.on('close', () => {}); 
-                currentCall.close();
-            }
-
-            // A. Conectar Video
-            const call = peer.call(hostId, new MediaStream()); // Dummy stream para iniciar
-            currentCall = call;
-            
-            call.on('stream', (remoteStream) => {
-                els.video.srcObject = remoteStream;
-                els.video.muted = false;
-                toggleVideo(true);
-                updateStatus('Conectado y viendo');
-                // Forzar reproducción para asegurar que se vea la pantalla
-                els.video.play().catch(e => console.log("Autoplay bloqueado, esperando interacción:", e));
-            });
-
-            call.on('close', () => {
-                toggleVideo(false);
-                // Eliminamos el alert molesto. Solo actualizamos el estado.
-                updateStatus('Señal interrumpida. Pulsa RECONECTAR.');
-            });
-
-            call.on('error', (err) => {
-                console.error("Error en llamada:", err);
-                updateStatus('Error de conexión. Intenta reconectar.');
-            });
+            // A. Conectar Video (VDO.Ninja)
+            loadVdoNinja('view', hostId);
+            updateStatus('Conectado al estadio.');
 
             // B. Conectar Chat
             const conn = peer.connect(hostId);
@@ -1169,10 +1105,6 @@
                 const conn = connections.find(c => c.peer === peerId);
                 if (conn) conn.close();
                 
-                // Cortar Video
-                const call = activeCalls.find(c => c.peer === peerId);
-                if (call) call.close();
-                
                 addSystemMsg(`🟥 ÁRBITRO: ${name} ha sido expulsado del partido.`);
             }
         }
@@ -1370,11 +1302,6 @@
         });
 
         // Utilidades UI
-        function toggleVideo(show) {
-            els.video.style.display = show ? 'block' : 'none';
-            els.placeholder.style.display = show ? 'none' : 'flex';
-        }
-
         function updateStatus(msg) {
             els.status.innerText = `Estado: ${msg}`;
         }
