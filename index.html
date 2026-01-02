@@ -883,11 +883,12 @@
             iframe.allow = "autoplay; camera; microphone; display-capture; fullscreen";
             
             // Construir URL: push para host, view para viewer
-            // clean=1 quita la interfaz de VDO.Ninja
-            let url = `https://vdo.ninja/?${mode}=${id}&clean=1`;
+            // clean=1 quita la interfaz. Solo lo usamos para el viewer.
+            let url = `https://vdo.ninja/?${mode}=${id}`;
             
             if (mode === 'view') {
-                url += '&autoplay=1'; // Autoplay para espectadores
+                // Viewer: Interfaz limpia y autoplay
+                url += '&clean=1&autoplay=1';
             }
             
             iframe.src = url;
